@@ -40,7 +40,6 @@
 #include "internal.h"
 #include "cardctl.h"
 #include "pkcs15.h"
-#include "gp.h"
 
 #define OBERTHUR_PIN_LOCAL	0x80
 #define OBERTHUR_PIN_REFERENCE_USER	0x81
@@ -81,6 +80,10 @@ static const unsigned char *aidAuthentIC_FINEID =
 		(const unsigned char *)"\xA0\x00\x00\x00\x63\x50\x4B\x43\x53\x2D\x31\x35";
 static const int lenAidAuthentIC_FINEID = 12;
 static const char *nameAidAuthentIC_FINEID = "FINeID v3";
+
+static const struct sc_aid fineid_cm_aid = {
+	{0xA0, 0x00, 0x00, 0x00, 0x63, 0x50, 0x4B, 0x43, 0x53, 0x2D, 0x31, 0x35}, 12
+};
 
 #define OBERTHUR_AUTH_TYPE_PIN		1
 #define OBERTHUR_AUTH_TYPE_PUK		2
@@ -132,6 +135,31 @@ auth_finish(struct sc_card *card)
 	return SC_SUCCESS;
 }
 
+/* Select card manager */
+int
+select_card_manager(struct sc_card *card, const struct sc_aid *aid)
+{
+	LOG_FUNC_CALLED(card->ctx);
+	
+	struct sc_apdu apdu;
+	int rv;
+
+	sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0xA4, 0x04, 0x0C);
+	apdu.lc = aid->len;
+	apdu.data = aid->value;
+	apdu.datalen = aid->len;
+
+	rv = sc_transmit_apdu(card, &apdu);
+
+	if (rv < 0)
+		return rv;
+
+	rv = sc_check_sw(card, apdu.sw1, apdu.sw2);
+	if (rv < 0)
+		return rv;
+
+	LOG_FUNC_RETURN(card->ctx, apdu.resplen);
+}
 
 static int
 auth_select_aid(struct sc_card *card)
@@ -143,8 +171,8 @@ auth_select_aid(struct sc_card *card)
 	struct sc_path tmp_path;
 
 	/* Select Card Manager (to deselect previously selected application) */
-	//rv = gp_select_card_manager(card);
-	//LOG_TEST_RET(card->ctx, rv, "APDU transmit failed");
+	rv = select_card_manager(card, &fineid_cm_aid);
+	LOG_TEST_RET(card->ctx, rv, "APDU transmit failed");
 
 	/* Get smart card serial number */
 	sc_format_apdu(card, &apdu, SC_APDU_CASE_2_SHORT, 0xCA, 0x9F, 0x7F);
