@@ -40,6 +40,7 @@
 #include "internal.h"
 #include "cardctl.h"
 #include "pkcs15.h"
+#include "iso7816.h"
 
 #define OBERTHUR_PIN_LOCAL	0x80
 #define OBERTHUR_PIN_REFERENCE_USER	0x81
@@ -301,29 +302,33 @@ add_acl_entry(struct sc_card *card, struct sc_file *file, unsigned int op,
 
 
 static int
-tlv_get(const unsigned char *msg, int len, unsigned char tag,
+tlv_get(struct sc_card *card, const unsigned char *msg, int len, unsigned char tag,
 		unsigned char *ret, int *ret_len)
 {
 	int cur = 0;
+	LOG_FUNC_CALLED(card->ctx);
 
 	while (cur < len)  {
 		if (*(msg+cur)==tag)  {
 			int ii, ln = *(msg+cur+1);
 
+			sc_log(card->ctx, "tag 0x%X found", tag);
+
 			if (ln > *ret_len)
-				return SC_ERROR_WRONG_LENGTH;
+				LOG_FUNC_RETURN(card->ctx, SC_ERROR_WRONG_LENGTH);
 
 			for (ii=0; ii<ln; ii++)
 				*(ret + ii) = *(msg+cur+2+ii);
 			*ret_len = ln;
 
-			return SC_SUCCESS;
+			LOG_FUNC_RETURN(card->ctx, SC_SUCCESS);
 		}
 
 		cur += 2 + *(msg+cur+1);
 	}
 
-	return SC_ERROR_INCORRECT_PARAMETERS;
+	sc_log(card->ctx, "no tag 0x%X present", tag);
+	LOG_FUNC_RETURN(card->ctx, SC_ERROR_INCORRECT_PARAMETERS);
 }
 
 
@@ -335,18 +340,19 @@ auth_process_fci(struct sc_card *card, struct sc_file *file,
 	int attr_len = sizeof(attr);
 
 	LOG_FUNC_CALLED(card->ctx);
+	
 	attr_len = sizeof(attr);
-	if (tlv_get(buf, buflen, 0x82, attr, &attr_len))
+	if (tlv_get(card, buf, buflen, ISO7816_TAG_FCP_TYPE, attr, &attr_len))
 		LOG_FUNC_RETURN(card->ctx, SC_ERROR_UNKNOWN_DATA_RECEIVED);
 	type = attr[0];
 
 	attr_len = sizeof(attr);
-	if (tlv_get(buf, buflen, 0x83, attr, &attr_len))
+	if (tlv_get(card, buf, buflen, ISO7816_TAG_FCP_FID, attr, &attr_len))
 		LOG_FUNC_RETURN(card->ctx, SC_ERROR_UNKNOWN_DATA_RECEIVED);
 	file->id = attr[0]*0x100 + attr[1];
 
 	attr_len = sizeof(attr);
-	if (tlv_get(buf, buflen, type==0x01 ? 0x80 : 0x85, attr, &attr_len))
+	if (tlv_get(card, buf, buflen, type==ISO7816_FILE_TYPE_TRANSPARENT_EF ? ISO7816_TAG_FCP_SIZE : ISO7816_TAG_FCP_PROP_INFO, attr, &attr_len))
 		LOG_FUNC_RETURN(card->ctx, SC_ERROR_UNKNOWN_DATA_RECEIVED);
 	if (attr_len<2 && type != 0x04)
 		LOG_FUNC_RETURN(card->ctx, SC_ERROR_UNKNOWN_DATA_RECEIVED);
@@ -362,7 +368,7 @@ auth_process_fci(struct sc_card *card, struct sc_file *file,
 		file->ef_structure = SC_FILE_EF_LINEAR_VARIABLE;
 		file->size = attr[0];
 		attr_len = sizeof(attr);
-		if (tlv_get(buf, buflen, 0x82, attr, &attr_len))
+		if (tlv_get(card, buf, buflen, 0x82, attr, &attr_len))
 			LOG_FUNC_RETURN(card->ctx, SC_ERROR_UNKNOWN_DATA_RECEIVED);
 		if (attr_len!=5)
 			LOG_FUNC_RETURN(card->ctx, SC_ERROR_UNKNOWN_DATA_RECEIVED);
@@ -409,7 +415,7 @@ auth_process_fci(struct sc_card *card, struct sc_file *file,
 	}
 
 	attr_len = sizeof(attr);
-	if (tlv_get(buf, buflen, 0x86, attr, &attr_len))
+	if (tlv_get(card, buf, buflen, ISO7816_TAG_FCP_ACLS, attr, &attr_len))
 		LOG_FUNC_RETURN(card->ctx, SC_ERROR_UNKNOWN_DATA_RECEIVED);
 	if (attr_len<8)
 		LOG_FUNC_RETURN(card->ctx, SC_ERROR_UNKNOWN_DATA_RECEIVED);
