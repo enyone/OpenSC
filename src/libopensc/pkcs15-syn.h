@@ -46,6 +46,7 @@ int sc_pkcs15emu_tccardos_init_ex(sc_pkcs15_card_t *,	struct sc_aid *, sc_pkcs15
 int sc_pkcs15emu_entersafe_init_ex(sc_pkcs15_card_t *,	struct sc_aid *, sc_pkcs15emu_opt_t *);
 int sc_pkcs15emu_pteid_init_ex(sc_pkcs15_card_t *,	struct sc_aid *, sc_pkcs15emu_opt_t *);
 int sc_pkcs15emu_oberthur_init_ex(sc_pkcs15_card_t *,	struct sc_aid *, sc_pkcs15emu_opt_t *);
+int sc_pkcs15emu_fineid_init_ex(sc_pkcs15_card_t *,	struct sc_aid *, sc_pkcs15emu_opt_t *);
 int sc_pkcs15emu_itacns_init_ex(sc_pkcs15_card_t *,	struct sc_aid *, sc_pkcs15emu_opt_t *);
 int sc_pkcs15emu_sc_hsm_init_ex(sc_pkcs15_card_t *,	struct sc_aid *, sc_pkcs15emu_opt_t *);
 int sc_pkcs15emu_dnie_init_ex(sc_pkcs15_card_t *,	struct sc_aid *, sc_pkcs15emu_opt_t *);

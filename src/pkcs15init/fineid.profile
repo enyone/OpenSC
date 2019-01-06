@@ -1,14 +1,14 @@
 #
-# PKCS15 r/w profile for Oberthur cards
+# PKCS15 r/w profile for FINeID Oberthur cards
 #
 cardinfo {
 	label	= "SCM";
 	manufacturer	= "Oberthur/OpenSC";
 		
-	max-pin-length	= 64;
+	max-pin-length	= 12;
 	min-pin-length	= 4;
 	pin-encoding	= ascii-numeric;
-	pin-pad-char	= 0xFF;
+	pin-pad-char	= 0x00;
 }
 
 pkcs15 {
@@ -21,23 +21,23 @@ pkcs15 {
 # here; that is done dynamically.
 PIN user-pin {
 	attempts	= 5;
-	max-length	= 64;
+	max-length	= 12;
 	min-length	= 4;
 	flags	= case-sensitive, local, initialized, needs-padding;
 	reference = 0x81
 }
 PIN user-puk {
 	attempts	= 5;
-	max-length	= 64;
-	min-length	= 4;
+	max-length	= 12;
+	min-length	= 8;
 	flags	= case-sensitive, local, unblock-disabled, initialized, needs-padding, unblockingPin;
 	reference = 0x84
 }
 PIN so-pin {
 	auth-id = FF;
-	attempts	= 3;
-	max-length	= 64;
-	min-length	= 4;
+	attempts	= 5;
+	max-length	= 12;
+	min-length	= 6;
 	flags	= case-sensitive, unblock-disabled, initialized, needs-padding, soPin;
 	reference = 4
 }
