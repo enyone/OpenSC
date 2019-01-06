@@ -57,9 +57,10 @@ static const struct sc_asn1_entry c_asn1_algorithm_info[7] = {
 	{ NULL, 0, 0, 0, NULL, NULL }
 };
 
-static const struct sc_asn1_entry c_asn1_algorithm_info_parameters[3] = {
+static const struct sc_asn1_entry c_asn1_algorithm_info_parameters[4] = {
 	{ "PKCS15RSAParameters",SC_ASN1_NULL,		SC_ASN1_TAG_NULL,	0, NULL, NULL },
 	{ "PKCS15ECParameters",	SC_ASN1_OBJECT,		SC_ASN1_TAG_OBJECT,	0, NULL, NULL },
+	{ "EmptyParameters",	SC_ASN1_NULL,		SC_ASN1_TAG_EMPTY_SEQUENCE,	0, NULL, NULL },
 	{ NULL, 0, 0, 0, NULL, NULL }
 };
 

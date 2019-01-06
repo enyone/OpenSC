@@ -520,6 +520,16 @@ const u8 *sc_asn1_skip_tag(sc_context_t *ctx, const u8 ** buf, size_t *buflen,
 	if (sc_asn1_read_tag((const u8 **) &p, len, &cla, &tag, &taglen) != SC_SUCCESS
 			|| p == NULL)
 		return NULL;
+
+	// If an empty sequence, just skip blindly
+	if(tag_in == SC_ASN1_TAG_EMPTY_SEQUENCE) {
+		len -= (p - *buf);	/* header size */
+		*buflen -= (p - *buf) + taglen;
+		*buf = p + taglen;	/* point to next tag */
+		*taglen_out = taglen;
+		return p;
+	}
+
 	switch (cla & 0xC0) {
 	case SC_ASN1_TAG_UNIVERSAL:
 		if ((tag_in & SC_ASN1_CLASS_MASK) != SC_ASN1_UNI)
@@ -1647,8 +1657,21 @@ decode_ok:
 		if (choice)
 			break;
  	}
- 	if (choice && asn1[idx].name == NULL) /* No match */
+	if (choice && asn1[idx].name == NULL) { /* No match */
+		sc_debug(ctx, SC_LOG_DEBUG_ASN1, "Reached the end of possible choices, none chosen\n");
+		if (left) {
+			u8 line[128], *linep = line;
+			size_t i;
+
+			line[0] = 0;
+			for (i = 0; i < 10 && i < left; i++) {
+				sprintf((char *) linep, "%02X ", p[i]);
+				linep += 3;
+			}
+			sc_debug(ctx, SC_LOG_DEBUG_ASN1, "next tag: %s\n", line);
+		}
 		SC_FUNC_RETURN(ctx, SC_LOG_DEBUG_ASN1, SC_ERROR_ASN1_OBJECT_NOT_FOUND);
+	}
  	if (newp != NULL)
 		*newp = p;
  	if (len_left != NULL)
