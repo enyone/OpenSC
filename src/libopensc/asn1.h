@@ -212,7 +212,7 @@ int sc_asn1_sig_value_sequence_to_rs(struct sc_context *ctx,
 #define SC_ASN1_TAG_BMPSTRING		30
 #define SC_ASN1_TAG_ESCAPE_MARKER	31
 
-#define SC_ASN1_TAG_EMPTY_SEQUENCE  0x30
+#define SC_ASN1_TAG_SEQUENCE_2  0x30
 
 #ifdef __cplusplus
 }

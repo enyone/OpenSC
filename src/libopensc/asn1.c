@@ -520,16 +520,6 @@ const u8 *sc_asn1_skip_tag(sc_context_t *ctx, const u8 ** buf, size_t *buflen,
 	if (sc_asn1_read_tag((const u8 **) &p, len, &cla, &tag, &taglen) != SC_SUCCESS
 			|| p == NULL)
 		return NULL;
-
-	// If an empty sequence, just skip blindly
-	if(tag_in == SC_ASN1_TAG_EMPTY_SEQUENCE) {
-		len -= (p - *buf);	/* header size */
-		*buflen -= (p - *buf) + taglen;
-		*buf = p + taglen;	/* point to next tag */
-		*taglen_out = taglen;
-		return p;
-	}
-
 	switch (cla & 0xC0) {
 	case SC_ASN1_TAG_UNIVERSAL:
 		if ((tag_in & SC_ASN1_CLASS_MASK) != SC_ASN1_UNI)
@@ -548,14 +538,17 @@ const u8 *sc_asn1_skip_tag(sc_context_t *ctx, const u8 ** buf, size_t *buflen,
 			return NULL;
 		break;
 	}
-	if (cla & SC_ASN1_TAG_CONSTRUCTED) {
-		if ((tag_in & SC_ASN1_CONS) == 0)
+	if(tag_in != SC_ASN1_TAG_SEQUENCE_2) {
+		if (cla & SC_ASN1_TAG_CONSTRUCTED) {
+			if ((tag_in & SC_ASN1_CONS) == 0)
+				return NULL;
+		} else {
+			if (tag_in & SC_ASN1_CONS)
+				return NULL;
+		}
+		if ((tag_in & SC_ASN1_TAG_MASK) != tag)
 			return NULL;
-	} else
-		if (tag_in & SC_ASN1_CONS)
-			return NULL;
-	if ((tag_in & SC_ASN1_TAG_MASK) != tag)
-		return NULL;
+	}
 	len -= (p - *buf);	/* header size */
 	if (taglen > len) {
 		sc_debug(ctx, SC_LOG_DEBUG_ASN1,
