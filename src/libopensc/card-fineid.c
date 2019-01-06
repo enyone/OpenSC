@@ -1609,62 +1609,6 @@ auth_init_pin_info(struct sc_card *card, struct sc_pin_cmd_pin *pin,
 
 
 static int
-auth_pin_verify_pinpad(struct sc_card *card, int pin_reference, int *tries_left)
-{
-	struct sc_card_driver *iso_drv = sc_get_iso7816_driver();
-	struct sc_pin_cmd_data pin_cmd;
-	struct sc_apdu apdu;
-	unsigned char ffs1[0x100];
-	int rv;
-
-	LOG_FUNC_CALLED(card->ctx);
-
-	memset(ffs1, 0xFF, sizeof(ffs1));
-	memset(&pin_cmd, 0, sizeof(pin_cmd));
-
-        rv = auth_pin_is_verified(card, pin_reference, tries_left);
-    	sc_log(card->ctx, "auth_pin_is_verified returned rv %i", rv);
-
-	/* Return SUCCESS without verifying if
-	 * PIN has been already verified and PIN pad has to be used. */
-	if (!rv)
-		LOG_FUNC_RETURN(card->ctx, rv);
-
-	pin_cmd.flags |= SC_PIN_CMD_NEED_PADDING;
-
-	/* For Oberthur card, PIN command data length has to be 0x40.
-	 * In PCSC10 v2.06 the upper limit of pin.max_length is 8.
-	 *
-	 * The standard sc_build_pin() throws an error when 'pin.len > pin.max_length' .
-	 * So, let's build our own APDU.
-	 */
-	sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x20, 0x00, pin_reference);
-	apdu.lc = OBERTHUR_AUTH_MAX_LENGTH_PIN;
-	apdu.datalen = OBERTHUR_AUTH_MAX_LENGTH_PIN;
-	apdu.data = ffs1;
-
-	pin_cmd.apdu = &apdu;
-	pin_cmd.pin_type = SC_AC_CHV;
-	pin_cmd.cmd = SC_PIN_CMD_VERIFY;
-	pin_cmd.flags |= SC_PIN_CMD_USE_PINPAD;
-	pin_cmd.pin_reference = pin_reference;
-	if (pin_cmd.pin1.min_length < 4)
-		pin_cmd.pin1.min_length = 4;
-	pin_cmd.pin1.max_length = 8;
-	pin_cmd.pin1.encoding = SC_PIN_ENCODING_ASCII;
-	pin_cmd.pin1.offset = 5;
-	pin_cmd.pin1.data = ffs1;
-	pin_cmd.pin1.len = OBERTHUR_AUTH_MAX_LENGTH_PIN;
-	pin_cmd.pin1.pad_length = OBERTHUR_AUTH_MAX_LENGTH_PIN;
-
-	rv = iso_drv->ops->pin_cmd(card, &pin_cmd, tries_left);
-	LOG_TEST_RET(card->ctx, rv, "PIN CMD 'VERIFY' with pinpad failed");
-
-	LOG_FUNC_RETURN(card->ctx, rv);
-}
-
-
-static int
 auth_pin_verify(struct sc_card *card, unsigned int type,
 		struct sc_pin_cmd_data *data, int *tries_left)
 {
@@ -1697,10 +1641,7 @@ auth_pin_verify(struct sc_card *card, unsigned int type,
 	if (!rv && !data->pin1.data && !data->pin1.len)
 		LOG_FUNC_RETURN(card->ctx, rv);
 
-	if (!data->pin1.data && !data->pin1.len)
-		rv = auth_pin_verify_pinpad(card, data->pin_reference, tries_left);
-	else
-		rv = iso_drv->ops->pin_cmd(card, data, tries_left);
+	rv = iso_drv->ops->pin_cmd(card, data, tries_left);
 
 	LOG_FUNC_RETURN(card->ctx, rv);
 }
@@ -1733,63 +1674,6 @@ auth_pin_is_verified(struct sc_card *card, int pin_reference, int *tries_left)
 
 
 static int
-auth_pin_change_pinpad(struct sc_card *card, struct sc_pin_cmd_data *data,
-		int *tries_left)
-{
-	struct sc_card_driver *iso_drv = sc_get_iso7816_driver();
-	struct sc_pin_cmd_data pin_cmd;
-	struct sc_apdu apdu;
-	unsigned char ffs1[0x100];
-	unsigned char ffs2[0x100];
-	int rv, pin_reference;
-
-	LOG_FUNC_CALLED(card->ctx);
-
-	pin_reference = data->pin_reference & ~OBERTHUR_PIN_LOCAL;
-
-	memset(ffs1, 0xFF, sizeof(ffs1));
-	memset(ffs2, 0xFF, sizeof(ffs2));
-	memset(&pin_cmd, 0, sizeof(pin_cmd));
-
-	if (data->pin1.len > OBERTHUR_AUTH_MAX_LENGTH_PIN)
-		LOG_TEST_RET(card->ctx, SC_ERROR_INVALID_ARGUMENTS, "'PIN CHANGE' failed");
-
-	if (data->pin1.data && data->pin1.len)
-		memcpy(ffs1, data->pin1.data, data->pin1.len);
-
-	pin_cmd.flags |= SC_PIN_CMD_NEED_PADDING;
-
-	sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x24, 0x00, pin_reference);
-	apdu.lc = OBERTHUR_AUTH_MAX_LENGTH_PIN * 2;
-	apdu.datalen = OBERTHUR_AUTH_MAX_LENGTH_PIN * 2;
-	apdu.data = ffs1;
-
-	pin_cmd.apdu = &apdu;
-	pin_cmd.pin_type = SC_AC_CHV;
-	pin_cmd.cmd = SC_PIN_CMD_CHANGE;
-	pin_cmd.flags |= SC_PIN_CMD_USE_PINPAD;
-	pin_cmd.pin_reference = pin_reference;
-	if (pin_cmd.pin1.min_length < 4)
-		pin_cmd.pin1.min_length = 4;
-	pin_cmd.pin1.max_length = 8;
-	pin_cmd.pin1.encoding = SC_PIN_ENCODING_ASCII;
-	pin_cmd.pin1.offset = 5 + OBERTHUR_AUTH_MAX_LENGTH_PIN;
-	pin_cmd.pin1.data = ffs1;
-	pin_cmd.pin1.len = OBERTHUR_AUTH_MAX_LENGTH_PIN;
-	pin_cmd.pin1.pad_length = 0;
-
-	memcpy(&pin_cmd.pin2, &pin_cmd.pin1, sizeof(pin_cmd.pin2));
-	pin_cmd.pin1.offset = 5;
-	pin_cmd.pin2.data = ffs2;
-
-	rv = iso_drv->ops->pin_cmd(card, &pin_cmd, tries_left);
-	LOG_TEST_RET(card->ctx, rv, "PIN CMD 'VERIFY' with pinpad failed");
-
-	LOG_FUNC_RETURN(card->ctx, rv);
-}
-
-
-static int
 auth_pin_change(struct sc_card *card, unsigned int type,
 		struct sc_pin_cmd_data *data, int *tries_left)
 {
@@ -1811,11 +1695,6 @@ auth_pin_change(struct sc_card *card, unsigned int type,
 
 		rv = iso_drv->ops->pin_cmd(card, data, tries_left);
 		LOG_TEST_RET(card->ctx, rv, "CMD 'PIN CHANGE' failed");
-	}
-	else if (!data->pin1.len && !data->pin2.len)   {
-		/* Oberthur unblock style with PIN pad. */
-		rv = auth_pin_change_pinpad(card, data, tries_left);
-		LOG_TEST_RET(card->ctx, rv, "'PIN CHANGE' failed: SOPIN verify with pinpad failed");
 	}
 	else   {
 		LOG_TEST_RET(card->ctx, SC_ERROR_INVALID_ARGUMENTS, "'PIN CHANGE' failed");

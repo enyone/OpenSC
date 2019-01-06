@@ -14,7 +14,6 @@ dist_pkgdata_DATA = \
 	incrypto34.profile \
 	jcop.profile \
 	oberthur.profile \
-	fineid.profile \
 	starcos.profile \
 	setcos.profile \
 	pkcs15.profile \
