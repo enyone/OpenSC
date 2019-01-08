@@ -28,7 +28,7 @@
 #include "config.h"
 #endif
 
-#ifdef ENABLE_OPENSSL	/* empty file without openssl */
+#ifdef ENABLE_OPENSSL
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
@@ -43,43 +43,42 @@
 #include "iso7816.h"
 #include "types.h"
 
-#define OBERTHUR_PIN_LOCAL	0x80
-#define OBERTHUR_PIN_REFERENCE_USER	0x81
+#define OBERTHUR_PIN_LOCAL				0x80
+#define OBERTHUR_PIN_REFERENCE_USER		0x81
 #define OBERTHUR_PIN_REFERENCE_ONETIME	0x82
-#define OBERTHUR_PIN_REFERENCE_SO	0x04
-#define OBERTHUR_PIN_REFERENCE_PUK	0x84
+#define OBERTHUR_PIN_REFERENCE_SO		0x04
+#define OBERTHUR_PIN_REFERENCE_PUK		0x84
 
 static const struct sc_atr_table oberthur_atrs[] = {
-	{ "3B:7F:96:00:00:80:31:B8:65:B0:85:03:00:EF:12:00:F6:82:90:00", NULL,
-			"FINeID v3", SC_CARD_TYPE_OBERTHUR_FINEID_3, 0, NULL },
+	{ "3B:7F:96:00:00:80:31:B8:65:B0:85:03:00:EF:12:00:F6:82:90:00",
+		NULL, "FINeID v3", SC_CARD_TYPE_OBERTHUR_FINEID_3, 0, NULL },
 	{ NULL, NULL, NULL, 0, 0, NULL }
 };
 
 struct auth_senv {
-	unsigned int algorithm;
-	int key_file_id;
-	size_t key_size;
+	unsigned int	algorithm;
+	int				key_file_id;
+	size_t			key_size;
 };
 
 struct auth_private_data {
-	unsigned char aid[SC_MAX_AID_SIZE];
-	int aid_len;
-
-	struct sc_pin_cmd_pin pin_info;
-	struct auth_senv senv;
-
-	long int sn;
+	unsigned char			aid[SC_MAX_AID_SIZE];
+	int						aid_len;
+	struct sc_pin_cmd_pin	pin_info;
+	struct auth_senv		senv;
+	long int				sn;
 };
 
 struct auth_update_component_info {
-	enum SC_CARDCTL_OBERTHUR_KEY_TYPE  type;
-	unsigned int    component;
-	unsigned char   *data;
-	unsigned int    len;
+	enum SC_CARDCTL_OBERTHUR_KEY_TYPE	type;
+	unsigned int						component;
+	unsigned char						*data;
+	unsigned int						len;
 };
 
 static const unsigned char *aidAuthentIC_FINEID =
-		(const unsigned char *)"\xA0\x00\x00\x00\x63\x50\x4B\x43\x53\x2D\x31\x35";
+	(const unsigned char *)"\xA0\x00\x00\x00\x63\x50\x4B\x43\x53\x2D\x31\x35";
+
 static const int lenAidAuthentIC_FINEID = 12;
 static const char *nameAidAuthentIC_FINEID = "FINeID v3";
 
@@ -87,8 +86,8 @@ static const struct sc_aid fineid_cm_aid = {
 	{0xA0, 0x00, 0x00, 0x00, 0x63, 0x50, 0x4B, 0x43, 0x53, 0x2D, 0x31, 0x35}, 12
 };
 
-#define OBERTHUR_AUTH_TYPE_PIN		1
-#define OBERTHUR_AUTH_TYPE_PUK		2
+#define OBERTHUR_AUTH_TYPE_PIN	1
+#define OBERTHUR_AUTH_TYPE_PUK	2
 
 #define OBERTHUR_AUTH_MAX_LENGTH_PIN	12
 #define OBERTHUR_AUTH_MAX_LENGTH_PUK	12
@@ -99,7 +98,7 @@ static const struct sc_aid fineid_cm_aid = {
 #define PUBKEY_1024_ASN1_SIZE	0x8C
 #define PUBKEY_2048_ASN1_SIZE	0x10E
 
-static struct sc_file *auth_current_ef = NULL,  *auth_current_df = NULL;
+static struct sc_file *auth_current_ef = NULL, *auth_current_df = NULL;
 static struct sc_card_operations auth_ops;
 static struct sc_card_operations *iso_ops;
 static struct sc_card_driver auth_drv = {
@@ -110,21 +109,22 @@ static struct sc_card_driver auth_drv = {
 };
 
 //static int auth_get_pin_reference (struct sc_card *card,
-//		int type, int reference, int cmd, int *out_ref);
+//	int type, int reference, int cmd, int *out_ref);
 static int auth_read_component(struct sc_card *card,
-		enum SC_CARDCTL_OBERTHUR_KEY_TYPE type, int num,
-		unsigned char *out, size_t outlen);
+	enum SC_CARDCTL_OBERTHUR_KEY_TYPE type, int num, unsigned char *out, size_t outlen);
 static int auth_pin_is_verified(struct sc_card *card, int pin_reference,
-		int *tries_left);
+	int *tries_left);
 static int auth_pin_verify(struct sc_card *card, unsigned int type,
-		struct sc_pin_cmd_data *data, int *tries_left);
+	struct sc_pin_cmd_data *data, int *tries_left);
 static int auth_pin_reset(struct sc_card *card, unsigned int type,
-		struct sc_pin_cmd_data *data, int *tries_left);
+	struct sc_pin_cmd_data *data, int *tries_left);
 static int auth_create_reference_data (struct sc_card *card,
-		struct sc_cardctl_oberthur_createpin_info *args);
-static int auth_get_serialnr(struct sc_card *card, struct sc_serial_number *serial);
+	struct sc_cardctl_oberthur_createpin_info *args);
+static int auth_get_serialnr(struct sc_card *card,
+	struct sc_serial_number *serial);
 static int auth_select_file(struct sc_card *card, const struct sc_path *in_path,
-		struct sc_file **file_out);
+	struct sc_file **file_out);
+
 
 static int
 auth_finish(struct sc_card *card)
@@ -133,7 +133,7 @@ auth_finish(struct sc_card *card)
 	return SC_SUCCESS;
 }
 
-/* Select card manager */
+
 int
 select_card_manager(struct sc_card *card, const struct sc_aid *aid)
 {
@@ -158,6 +158,7 @@ select_card_manager(struct sc_card *card, const struct sc_aid *aid)
 
 	LOG_FUNC_RETURN(card->ctx, apdu.resplen);
 }
+
 
 static int
 auth_select_aid(struct sc_card *card)
@@ -250,6 +251,7 @@ auth_init(struct sc_card *card)
 	flags |= SC_ALGORITHM_RSA_HASH_NONE;
 	flags |= SC_ALGORITHM_ONBOARD_KEY_GEN;
 
+
 	_sc_card_add_rsa_alg(card, 512, flags, 0);
 	_sc_card_add_rsa_alg(card, 1024, flags, 0);
 	_sc_card_add_rsa_alg(card, 2048, flags, 0);
@@ -337,15 +339,6 @@ auth_process_fci(struct sc_card *card, struct sc_file *file,
 	int attr_len = sizeof(attr);
 
 	LOG_FUNC_CALLED(card->ctx);
-	
-	attr_len = sizeof(attr);
-	if (tlv_get(card, buf, buflen, ISO7816_TAG_FCP_TYPE, attr, &attr_len)) {
-		type = ISO7816_FILE_TYPE_TRANSPARENT_EF; // FINeID default type
-	} else {
-		type = attr[0];
-	}
-	
-	sc_log(card->ctx, "assuming type 0x%X", type);
 
 	attr_len = sizeof(attr);
 	if (tlv_get(card, buf, buflen, ISO7816_TAG_FCP_FID, attr, &attr_len))
@@ -354,11 +347,21 @@ auth_process_fci(struct sc_card *card, struct sc_file *file,
 
 	sc_log(card->ctx, "assuming id 0x%X", file->id);
 
-	// Skipping DF 5016 as not useful
+	// Skipping DF 5016 as not useful and will be
+	// encountered only during path traversal
 	if(file->id == 0x5016) {
-		sc_log(card->ctx, "skipping 0x%X", file->id);
+		sc_log(card->ctx, "skipping 0x%X during path traversal", file->id);
 		LOG_FUNC_RETURN(card->ctx, SC_SUCCESS);
 	}
+
+	attr_len = sizeof(attr);
+	if (tlv_get(card, buf, buflen, ISO7816_TAG_FCP_TYPE, attr, &attr_len)) {
+		type = ISO7816_FILE_TYPE_TRANSPARENT_EF; // FINeID default type
+	} else {
+		type = attr[0];
+	}
+
+	sc_log(card->ctx, "assuming type 0x%X", type);
 
 	attr_len = sizeof(attr);
 	if (tlv_get(card, buf, buflen, type==ISO7816_FILE_TYPE_TRANSPARENT_EF ? ISO7816_TAG_FCP_SIZE_FULL : ISO7816_TAG_FCP_PROP_INFO, attr, &attr_len))
@@ -424,7 +427,7 @@ auth_process_fci(struct sc_card *card, struct sc_file *file,
 	}
 
 	// TODO: Implement the way ISO7816_TAG_FCP_ACLS is not needed as it is not present
-	// Hard-coded for now
+	// Hard-coded for now, see reason bellow
 	if (file->type == SC_FILE_TYPE_DF) {
 		add_acl_entry(card, file, SC_AC_OP_SELECT, 0x00);
 		add_acl_entry(card, file, SC_AC_OP_LOCK, 0xFF);
@@ -442,6 +445,7 @@ auth_process_fci(struct sc_card *card, struct sc_file *file,
 		add_acl_entry(card, file, SC_AC_OP_INVALIDATE, 0xFF);
 	}
 	
+	// TODO: Tag ISO7816_TAG_FCP_ACLS not present in FINeID
     /*
 	attr_len = sizeof(attr);
 	if (tlv_get(card, buf, buflen, ISO7816_TAG_FCP_ACLS, attr, &attr_len))
@@ -668,8 +672,9 @@ auth_set_security_env(struct sc_card *card,
 	struct auth_senv *auth_senv = &((struct auth_private_data *) card->drv_data)->senv;
 	struct sc_apdu apdu;
 	int rv;
-	unsigned char rsa_sbuf[3] = {
-		0x80, 0x01, 0xFF
+	unsigned char rsa_sbuf[6] = {
+		0x80, 0x01, 0xFF,
+		0x84, 0x01, 0xFF
 	};
 
 	LOG_FUNC_CALLED(card->ctx);
@@ -683,20 +688,22 @@ auth_set_security_env(struct sc_card *card,
 	//if (!(env->flags & SC_SEC_ENV_FILE_REF_PRESENT))
 	//	LOG_TEST_RET(card->ctx, SC_ERROR_INTERNAL, "Key file is not selected.");
 
-	switch (env->algorithm)   {
+	switch (env->algorithm) {
 	case SC_ALGORITHM_RSA:
-		if (env->operation == SC_SEC_OPERATION_SIGN)   {
+		if (env->operation == SC_SEC_OPERATION_SIGN) {
+			// TODO: Implement and remove hardcoding
 			rsa_sbuf[2] = 0x41; // SHA-256 with RSA padding according to ISO 9796-2
-			//rsa_sbuf[5] = 0x41; // SHA-256 with RSA padding according to ISO 9796-2
+			rsa_sbuf[5] = 0x02; // key 2 (signing)
 
 			sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x22, 0x41, 0xB6);
 			apdu.lc = sizeof(rsa_sbuf);
 			apdu.datalen = sizeof(rsa_sbuf);
 			apdu.data = rsa_sbuf;
 		}
-		else if (env->operation == SC_SEC_OPERATION_DECIPHER)   {
+		else if (env->operation == SC_SEC_OPERATION_DECIPHER) {
+			// TODO: Implement and remove hardcoding
 			rsa_sbuf[2] = 0x4D; // RSAES OAEP SHA-256
-			//rsa_sbuf[5] = 0x4D; // RSAES OAEP SHA-256
+			rsa_sbuf[5] = 0x01; // key 1 (authentication)
 
 			sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x22, 0x41, 0xB8);
 			apdu.lc = sizeof(rsa_sbuf);
@@ -736,8 +743,12 @@ auth_compute_signature(struct sc_card *card, const unsigned char *in, size_t ile
 		unsigned char * out, size_t olen)
 {
 	struct sc_apdu apdu;
+	unsigned char req[SC_MAX_APDU_BUFFER_SIZE];
 	unsigned char resp[SC_MAX_APDU_BUFFER_SIZE];
+	size_t reqlen = ilen + 2;
 	int rv;
+
+	LOG_FUNC_CALLED(card->ctx);
 
 	if (!card || !in || !out)   {
 		return SC_ERROR_INVALID_ARGUMENTS;
@@ -749,15 +760,18 @@ auth_compute_signature(struct sc_card *card, const unsigned char *in, size_t ile
 		LOG_TEST_RET(card->ctx, SC_ERROR_INVALID_ARGUMENTS, "Illegal input length");
 	}
 
-	LOG_FUNC_CALLED(card->ctx);
 	sc_log(card->ctx,
 	       "inlen %"SC_FORMAT_LEN_SIZE_T"u, outlen %"SC_FORMAT_LEN_SIZE_T"u",
 	       ilen, olen);
 
+	memcpy(&req[2], in, ilen);
+	req[0] = 0x80;
+	req[1] = ilen;
+
 	sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x2A, 0x90, 0xA0);
-	apdu.datalen = ilen;
-	apdu.data = in;
-	apdu.lc = ilen;
+	apdu.datalen = reqlen;
+	apdu.data = req;
+	apdu.lc = reqlen;
 
 	rv = sc_transmit_apdu(card, &apdu);
 	LOG_TEST_RET(card->ctx, rv, "APDU transmit failed");
@@ -918,31 +932,6 @@ auth_read_component(struct sc_card *card, enum SC_CARDCTL_OBERTHUR_KEY_TYPE type
 	memcpy(out, apdu.resp, apdu.resplen);
 	LOG_FUNC_RETURN(card->ctx, apdu.resplen);
 }
-
-
-/*
-static int
-auth_get_pin_reference (struct sc_card *card, int type, int reference, int cmd, int *out_ref)
-{
-	if (!out_ref)
-		LOG_FUNC_RETURN(card->ctx, SC_ERROR_INVALID_ARGUMENTS);
-
-	switch (type) {
-	case SC_AC_CHV:
-	case SC_AC_CONTEXT_SPECIFIC:
-		*out_ref = reference;
-		if (reference == 1 || reference == 4)
-			if (cmd == SC_PIN_CMD_VERIFY)
-				*out_ref |= 0x80;
-		break;
-
-	default:
-		LOG_FUNC_RETURN(card->ctx, SC_ERROR_INVALID_ARGUMENTS);
-	}
-
-	LOG_FUNC_RETURN(card->ctx, SC_SUCCESS);
-}
-*/
 
 
 static void
@@ -1274,9 +1263,36 @@ auth_create_reference_data (struct sc_card *card,
 }
 
 
+// TODO: Not used atm, see reason at auth_logout()
+/*
+static int
+auth_get_pin_reference (struct sc_card *card, int type, int reference, int cmd, int *out_ref)
+{
+	if (!out_ref)
+		LOG_FUNC_RETURN(card->ctx, SC_ERROR_INVALID_ARGUMENTS);
+
+	switch (type) {
+	case SC_AC_CHV:
+	case SC_AC_CONTEXT_SPECIFIC:
+		*out_ref = reference;
+		if (reference == 1 || reference == 4)
+			if (cmd == SC_PIN_CMD_VERIFY)
+				*out_ref |= 0x80;
+		break;
+
+	default:
+		LOG_FUNC_RETURN(card->ctx, SC_ERROR_INVALID_ARGUMENTS);
+	}
+
+	LOG_FUNC_RETURN(card->ctx, SC_SUCCESS);
+}
+*/
+
+
 static int
 auth_logout(struct sc_card *card)
 {
+	// TODO: INS 0x2E not present in FINeID
 	/*
 	struct sc_apdu apdu;
 	int ii, rv = 0, pin_ref;
@@ -1474,4 +1490,4 @@ sc_get_fineid_driver(void)
 	return sc_get_driver();
 }
 
-#endif /* ENABLE_OPENSSL */
+#endif /* #ifdef ENABLE_OPENSSL */
