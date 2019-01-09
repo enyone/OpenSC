@@ -256,7 +256,6 @@ auth_init(struct sc_card *card)
 	flags |= SC_ALGORITHM_RSA_HASH_SHA256;
 	flags |= SC_ALGORITHM_RSA_HASH_SHA384;
 	flags |= SC_ALGORITHM_RSA_HASH_SHA512;
-	flags |= SC_ALGORITHM_ONBOARD_KEY_GEN;
 
 	_sc_card_add_rsa_alg(card, 512, flags, 0);
 	_sc_card_add_rsa_alg(card, 1024, flags, 0);
@@ -721,7 +720,7 @@ auth_set_security_env(struct sc_card *card,
 			unsigned int algo = auth_get_algo(env->algorithm_flags);
 			unsigned int padding = auth_get_padding(env->algorithm_flags);
 			rsa_sbuf[2] = algo | padding;
-			rsa_sbuf[5] = 0x02; // key 2 (signing)
+			rsa_sbuf[5] = env->key_ref[0];
 
 			sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x22, 0x41, 0xB6);
 			apdu.lc = sizeof(rsa_sbuf);
@@ -730,7 +729,7 @@ auth_set_security_env(struct sc_card *card,
 		}
 		else if (env->operation == SC_SEC_OPERATION_AUTHENTICATE) {
 			rsa_sbuf[2] = auth_get_ct();
-			rsa_sbuf[5] = 0x01; // key 1 (authentication)
+			rsa_sbuf[5] = env->key_ref[0];
 
 			sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x22, 0x41, 0xB8);
 			apdu.lc = sizeof(rsa_sbuf);
@@ -739,7 +738,7 @@ auth_set_security_env(struct sc_card *card,
 		}
 		else if (env->operation == SC_SEC_OPERATION_DECIPHER) {
 			rsa_sbuf[2] = auth_get_ct();
-			rsa_sbuf[5] = 0x01; // key 1 (authentication)
+			rsa_sbuf[5] = env->key_ref[0];
 
 			sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x22, 0x41, 0xB8);
 			apdu.lc = sizeof(rsa_sbuf);
