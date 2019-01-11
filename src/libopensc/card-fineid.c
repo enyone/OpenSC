@@ -72,24 +72,20 @@
 #define FINEID_CT_RSAES_OAEP_SHA384 0x5D
 #define FINEID_CT_RSAES_OAEP_SHA512 0x6D
 
+#define FINEID_HASHING_BY_CARD    0x80
+#define FINEID_HASHING_EXTERNALLY 0x90
+
 static const struct sc_atr_table fineid_atrs[] = {
 	{ "3B:7F:96:00:00:80:31:B8:65:B0:85:03:00:EF:12:00:F6:82:90:00",
 		NULL, "FINeID v3", SC_CARD_TYPE_OBERTHUR_FINEID_3, 0, NULL },
 	{ NULL, NULL, NULL, 0, 0, NULL }
 };
 
-struct auth_senv {
-	unsigned int algorithm;
-	int          key_file_id;
-	size_t       key_size;
-};
-
-struct auth_private_data {
-	unsigned char         aid[SC_MAX_AID_SIZE];
-	int                   aid_len;
-	struct sc_pin_cmd_pin pin_info;
-	struct auth_senv      senv;
-	long int              sn;
+struct private_driver_data {
+	unsigned char aid[SC_MAX_AID_SIZE];
+	int           aid_len;
+	unsigned int  algorithm, algorithm_flags;
+	long int      sn;
 };
 
 static const unsigned char *aid_FINEID =
@@ -168,7 +164,7 @@ auth_select_aid(struct sc_card *card)
 {
 	struct sc_apdu apdu;
 	unsigned char apdu_resp[SC_MAX_APDU_BUFFER_SIZE];
-	struct auth_private_data *data =  (struct auth_private_data *) card->drv_data;
+	struct private_driver_data *_driver_data =  (struct private_driver_data *) card->drv_data;
 	int rv, ii;
 	struct sc_path tmp_path;
 
@@ -188,10 +184,10 @@ auth_select_aid(struct sc_card *card)
 	card->serialnr.len = 4;
 	memcpy(card->serialnr.value, apdu.resp+15, 4);
 
-	for (ii=0, data->sn = 0; ii < 4; ii++)
-		data->sn += (long int)(*(apdu.resp + 15 + ii)) << (3-ii)*8;
+	for (ii=0, _driver_data->sn = 0; ii < 4; ii++)
+		_driver_data->sn += (long int)(*(apdu.resp + 15 + ii)) << (3-ii)*8;
 
-	sc_log(card->ctx, "serial number %li/0x%lX", data->sn, data->sn);
+	sc_log(card->ctx, "serial number %li/0x%lX", _driver_data->sn, _driver_data->sn);
 
 	memset(&tmp_path, 0, sizeof(struct sc_path));
 	tmp_path.type = SC_PATH_TYPE_DF_NAME;
@@ -209,8 +205,8 @@ auth_select_aid(struct sc_card *card)
 	sc_format_path("3F002F00", &card->cache.current_path);
 	sc_file_dup(&auth_current_ef, auth_current_df);
 	
-	memcpy(data->aid, aid_FINEID, lenAid_FINEID);
-	data->aid_len = lenAid_FINEID;
+	memcpy(_driver_data->aid, aid_FINEID, lenAid_FINEID);
+	_driver_data->aid_len = lenAid_FINEID;
 	card->name = nameAid_FINEID;
 
 	LOG_FUNC_RETURN(card->ctx, rv);
@@ -230,17 +226,18 @@ auth_match_card(struct sc_card *card)
 static int
 auth_init(struct sc_card *card)
 {
-	struct auth_private_data *data;
+	struct private_driver_data *_driver_data;
 	struct sc_path path;
 	unsigned long flags;
 	int rv = 0;
 
-	data = calloc(1, sizeof(struct auth_private_data));
-	if (!data)
+	_driver_data = calloc(1, sizeof(struct private_driver_data));
+
+	if (!_driver_data)
 		LOG_FUNC_RETURN(card->ctx, SC_ERROR_OUT_OF_MEMORY);
 
 	card->cla = 0x00;
-	card->drv_data = data;
+	card->drv_data = _driver_data;
 
 	card->caps |= SC_CARD_CAP_RNG;
 	card->caps |= SC_CARD_CAP_USE_FCI_AC;
@@ -698,7 +695,7 @@ static int
 auth_set_security_env(struct sc_card *card,
 		const struct sc_security_env *env, int se_num)
 {
-	struct auth_senv *auth_senv = &((struct auth_private_data *) card->drv_data)->senv;
+	struct private_driver_data *_driver_data = (struct private_driver_data *) card->drv_data;
 	struct sc_apdu apdu;
 	int rv;
 	unsigned char rsa_sbuf[6] = {
@@ -712,13 +709,15 @@ auth_set_security_env(struct sc_card *card,
 	       env->operation, sc_print_path(&env->file_ref), env->key_ref[0],
 	       env->algorithm_flags, env->flags);
 
-	memset(auth_senv, 0, sizeof(struct auth_senv));
-
 	switch (env->algorithm) {
 	case SC_ALGORITHM_RSA:
 		if (env->operation == SC_SEC_OPERATION_SIGN) {
 			unsigned int algo = auth_get_algo(env->algorithm_flags);
 			unsigned int padding = auth_get_padding(env->algorithm_flags);
+
+			if(algo == FINEID_ALGO_HIGH_NA)
+				algo = FINEID_ALGO_HIGH_SHA256;
+
 			rsa_sbuf[2] = algo | padding;
 			rsa_sbuf[5] = env->key_ref[0];
 
@@ -760,7 +759,8 @@ auth_set_security_env(struct sc_card *card,
 	rv = sc_check_sw(card, apdu.sw1, apdu.sw2);
 	LOG_TEST_RET(card->ctx, rv, "Card returned error");
 
-	auth_senv->algorithm = env->algorithm;
+	_driver_data->algorithm = env->algorithm;
+	_driver_data->algorithm_flags = env->algorithm_flags;
 
 	LOG_FUNC_RETURN(card->ctx, rv);
 }
@@ -777,10 +777,11 @@ static int
 auth_compute_signature(struct sc_card *card, const unsigned char *in, size_t ilen,
 		unsigned char * out, size_t olen)
 {
+	struct private_driver_data *_driver_data = (struct private_driver_data *) card->drv_data;
 	struct sc_apdu apdu;
 	unsigned char req[SC_MAX_APDU_BUFFER_SIZE];
 	unsigned char resp[SC_MAX_APDU_BUFFER_SIZE];
-	size_t reqlen = ilen + 2;
+	size_t ii = 0, reqlen, blklen;
 	int rv;
 
 	LOG_FUNC_CALLED(card->ctx);
@@ -799,10 +800,35 @@ auth_compute_signature(struct sc_card *card, const unsigned char *in, size_t ile
 	       "inlen %"SC_FORMAT_LEN_SIZE_T"u, outlen %"SC_FORMAT_LEN_SIZE_T"u",
 	       ilen, olen);
 
-	memcpy(&req[2], in, ilen);
-	req[0] = 0x90;
-	req[1] = ilen;
+	blklen = 64;
 
+	if(ilen>blklen) {
+		for (ii=0; ii<ilen-blklen; ii+=blklen)   {
+			sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x2A, 0x90, 0x80);
+			apdu.datalen = blklen;
+			apdu.data = in+ii;
+			apdu.lc = blklen;
+
+			sc_log(card->ctx, "Iterating at offset %lu", ii);
+			rv = sc_transmit_apdu(card, &apdu);
+			LOG_TEST_RET(card->ctx, rv, "APDU transmit failed");
+			rv = sc_check_sw(card, apdu.sw1, apdu.sw2);
+			LOG_TEST_RET(card->ctx, rv, "Block send with offset failed");
+		}
+	}
+
+	reqlen = ilen-ii+2;
+
+	memcpy(&req[2], in+ii, ilen-ii);
+
+	if(auth_get_algo(_driver_data->algorithm_flags) == FINEID_ALGO_HIGH_NA)
+		req[0] = FINEID_HASHING_BY_CARD;
+	else
+		req[0] = FINEID_HASHING_EXTERNALLY;
+
+	req[1] = ilen-ii;
+
+	sc_log(card->ctx, "Finalizing at offset %lu", ii);
 	sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x2A, 0x90, 0xA0);
 	apdu.datalen = reqlen;
 	apdu.data = req;
@@ -811,7 +837,7 @@ auth_compute_signature(struct sc_card *card, const unsigned char *in, size_t ile
 	rv = sc_transmit_apdu(card, &apdu);
 	LOG_TEST_RET(card->ctx, rv, "APDU transmit failed");
 	rv = sc_check_sw(card, apdu.sw1, apdu.sw2);
-	LOG_TEST_RET(card->ctx, rv, "Hash send failed");
+	LOG_TEST_RET(card->ctx, rv, "Last block send failed");
 
 	sc_format_apdu(card, &apdu, SC_APDU_CASE_2_SHORT, 0x2A, 0x9E, 0x9A);
 	apdu.le = olen > 256 ? 256 : olen;
