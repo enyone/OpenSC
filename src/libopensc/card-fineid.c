@@ -82,8 +82,8 @@ static const struct sc_atr_table fineid_atrs[] = {
 };
 
 struct private_driver_data {
-	unsigned char aid[SC_MAX_AID_SIZE];
-	int           aid_len;
+	unsigned char aid[SC_MAX_AID_SIZE], key_ref_msb;
+	int           aid_len, operation;
 	unsigned int  algorithm, algorithm_flags;
 	long int      sn;
 };
@@ -657,6 +657,8 @@ auth_get_algo(unsigned int algorithm_flags)
 {
 	if (algorithm_flags & SC_ALGORITHM_RSA_HASH_SHA1)
 		return FINEID_ALGO_HIGH_SHA1;
+	else if (algorithm_flags & SC_ALGORITHM_RSA_HASH_MD5_SHA1)
+		return FINEID_ALGO_HIGH_SHA1;
 	else if (algorithm_flags & SC_ALGORITHM_RSA_HASH_SHA224)
 		return FINEID_ALGO_HIGH_SHA224;
 	else if (algorithm_flags & SC_ALGORITHM_RSA_HASH_SHA256)
@@ -692,10 +694,10 @@ auth_get_ct()
 
 
 static int
-auth_set_security_env(struct sc_card *card,
-		const struct sc_security_env *env, int se_num)
+auth_change_security_env(struct sc_card *card)
 {
 	struct private_driver_data *_driver_data = (struct private_driver_data *) card->drv_data;
+
 	struct sc_apdu apdu;
 	int rv;
 	unsigned char rsa_sbuf[6] = {
@@ -705,39 +707,39 @@ auth_set_security_env(struct sc_card *card,
 
 	LOG_FUNC_CALLED(card->ctx);
 	sc_log(card->ctx,
-	       "op %i; path %s; key_ref 0x%X; algos 0x%X; flags 0x%lX",
-	       env->operation, sc_print_path(&env->file_ref), env->key_ref[0],
-	       env->algorithm_flags, env->flags);
+	       "operation %i; key_ref 0x%X; algorithm_flags 0x%X",
+	       _driver_data->operation, _driver_data->key_ref_msb,
+	       _driver_data->algorithm_flags);
 
-	switch (env->algorithm) {
+	switch (_driver_data->algorithm) {
 	case SC_ALGORITHM_RSA:
-		if (env->operation == SC_SEC_OPERATION_SIGN) {
-			unsigned int algo = auth_get_algo(env->algorithm_flags);
-			unsigned int padding = auth_get_padding(env->algorithm_flags);
+		if (_driver_data->operation == SC_SEC_OPERATION_SIGN) {
+			unsigned int algo = auth_get_algo(_driver_data->algorithm_flags);
+			unsigned int padding = auth_get_padding(_driver_data->algorithm_flags);
 
 			if(algo == FINEID_ALGO_HIGH_NA)
 				algo = FINEID_ALGO_HIGH_SHA256;
 
 			rsa_sbuf[2] = algo | padding;
-			rsa_sbuf[5] = env->key_ref[0];
+			rsa_sbuf[5] = _driver_data->key_ref_msb;
 
 			sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x22, 0x41, 0xB6);
 			apdu.lc = sizeof(rsa_sbuf);
 			apdu.datalen = sizeof(rsa_sbuf);
 			apdu.data = rsa_sbuf;
 		}
-		else if (env->operation == SC_SEC_OPERATION_AUTHENTICATE) {
+		else if (_driver_data->operation == SC_SEC_OPERATION_AUTHENTICATE) {
 			rsa_sbuf[2] = auth_get_ct();
-			rsa_sbuf[5] = env->key_ref[0];
+			rsa_sbuf[5] = _driver_data->key_ref_msb;
 
 			sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x22, 0x41, 0xB8);
 			apdu.lc = sizeof(rsa_sbuf);
 			apdu.datalen = sizeof(rsa_sbuf);
 			apdu.data = rsa_sbuf;
 		}
-		else if (env->operation == SC_SEC_OPERATION_DECIPHER) {
+		else if (_driver_data->operation == SC_SEC_OPERATION_DECIPHER) {
 			rsa_sbuf[2] = auth_get_ct();
-			rsa_sbuf[5] = env->key_ref[0];
+			rsa_sbuf[5] = _driver_data->key_ref_msb;
 
 			sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x22, 0x41, 0xB8);
 			apdu.lc = sizeof(rsa_sbuf);
@@ -745,7 +747,7 @@ auth_set_security_env(struct sc_card *card,
 			apdu.data = rsa_sbuf;
 		}
 		else {
-			sc_log(card->ctx, "Invalid crypto operation: %X", env->operation);
+			sc_log(card->ctx, "Invalid crypto operation: %X", _driver_data->operation);
 			LOG_FUNC_RETURN(card->ctx, SC_ERROR_NOT_SUPPORTED);
 		}
 
@@ -759,8 +761,25 @@ auth_set_security_env(struct sc_card *card,
 	rv = sc_check_sw(card, apdu.sw1, apdu.sw2);
 	LOG_TEST_RET(card->ctx, rv, "Card returned error");
 
+	LOG_FUNC_RETURN(card->ctx, rv);
+}
+
+
+static int
+auth_set_security_env(struct sc_card *card,
+		const struct sc_security_env *env, int se_num)
+{
+	struct private_driver_data *_driver_data = (struct private_driver_data *) card->drv_data;
+	int rv;
+
+	LOG_FUNC_CALLED(card->ctx);
+
+	_driver_data->operation = env->operation;
+	_driver_data->key_ref_msb = env->key_ref[0];
 	_driver_data->algorithm = env->algorithm;
 	_driver_data->algorithm_flags = env->algorithm_flags;
+
+	rv = auth_change_security_env(card);
 
 	LOG_FUNC_RETURN(card->ctx, rv);
 }
@@ -779,9 +798,10 @@ auth_compute_signature(struct sc_card *card, const unsigned char *in, size_t ile
 {
 	struct private_driver_data *_driver_data = (struct private_driver_data *) card->drv_data;
 	struct sc_apdu apdu;
+	unsigned char instr[SC_MAX_APDU_BUFFER_SIZE];
 	unsigned char req[SC_MAX_APDU_BUFFER_SIZE];
 	unsigned char resp[SC_MAX_APDU_BUFFER_SIZE];
-	size_t ii = 0, reqlen, blklen;
+	size_t ii = 0, reqlen, blklen = 64;
 	int rv;
 
 	LOG_FUNC_CALLED(card->ctx);
@@ -789,24 +809,35 @@ auth_compute_signature(struct sc_card *card, const unsigned char *in, size_t ile
 	if (!card || !in || !out)   {
 		return SC_ERROR_INVALID_ARGUMENTS;
 	}
+
 	else if (ilen > 96)   {
-		sc_log(card->ctx,
-		       "Illegal input length %"SC_FORMAT_LEN_SIZE_T"u",
-		       ilen);
+		sc_log(card->ctx, "Illegal input length %"SC_FORMAT_LEN_SIZE_T"u", ilen);
 		LOG_TEST_RET(card->ctx, SC_ERROR_INVALID_ARGUMENTS, "Illegal input length");
 	}
 
-	sc_log(card->ctx,
-	       "inlen %"SC_FORMAT_LEN_SIZE_T"u, outlen %"SC_FORMAT_LEN_SIZE_T"u",
-	       ilen, olen);
+	sc_log(card->ctx, "inlen %"SC_FORMAT_LEN_SIZE_T"u, outlen %"SC_FORMAT_LEN_SIZE_T"u", ilen, olen);
 
-	blklen = 64;
+	memcpy(&instr, in, ilen);
+
+	if(auth_get_algo(_driver_data->algorithm_flags) == FINEID_ALGO_HIGH_NA &&
+	   ilen != 20 && ilen != 28 && ilen != 32 && ilen != 48 && ilen != 64) {
+		sc_log(card->ctx, "Stripping pkcs prefix, cur flags: %X, cur length: %lu",
+			_driver_data->algorithm_flags, ilen);
+
+		sc_pkcs1_strip_digest_info_prefix(&_driver_data->algorithm_flags, instr, ilen, instr, &ilen);
+		_driver_data->algorithm_flags = _driver_data->algorithm_flags | SC_ALGORITHM_RSA_PAD_PKCS1;
+		sc_log(card->ctx, "Stripped pkcs prefix, new flags: %X, new length: %lu",
+			_driver_data->algorithm_flags, ilen);
+
+		rv = auth_change_security_env(card);
+		LOG_TEST_RET(card->ctx, rv, "Security env change with new algorithm failed");
+	}
 
 	if(ilen>blklen) {
 		for (ii=0; ii<ilen-blklen; ii+=blklen)   {
 			sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x2A, 0x90, 0x80);
 			apdu.datalen = blklen;
-			apdu.data = in+ii;
+			apdu.data = instr+ii;
 			apdu.lc = blklen;
 
 			sc_log(card->ctx, "Iterating at offset %lu", ii);
@@ -819,7 +850,7 @@ auth_compute_signature(struct sc_card *card, const unsigned char *in, size_t ile
 
 	reqlen = ilen-ii+2;
 
-	memcpy(&req[2], in+ii, ilen-ii);
+	memcpy(&req[2], instr+ii, ilen-ii);
 
 	if(auth_get_algo(_driver_data->algorithm_flags) == FINEID_ALGO_HIGH_NA)
 		req[0] = FINEID_HASHING_BY_CARD;
