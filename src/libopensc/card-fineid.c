@@ -657,8 +657,6 @@ auth_get_algo(unsigned int algorithm_flags)
 {
 	if (algorithm_flags & SC_ALGORITHM_RSA_HASH_SHA1)
 		return FINEID_ALGO_HIGH_SHA1;
-	else if (algorithm_flags & SC_ALGORITHM_RSA_HASH_MD5_SHA1)
-		return FINEID_ALGO_HIGH_SHA1;
 	else if (algorithm_flags & SC_ALGORITHM_RSA_HASH_SHA224)
 		return FINEID_ALGO_HIGH_SHA224;
 	else if (algorithm_flags & SC_ALGORITHM_RSA_HASH_SHA256)
