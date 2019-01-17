@@ -442,7 +442,7 @@ auth_process_fci(struct sc_card *card, struct sc_file *file,
 	}
 	
 	// TODO: Tag ISO7816_TAG_FCP_ACLS not present in FINeID
-    /*
+	/*
 	attr_len = sizeof(attr);
 	if (tlv_get(card, buf, buflen, ISO7816_TAG_FCP_ACLS, attr, &attr_len))
 		LOG_FUNC_RETURN(card->ctx, SC_ERROR_UNKNOWN_DATA_RECEIVED);
@@ -801,7 +801,7 @@ auth_compute_signature(struct sc_card *card, const unsigned char *in, size_t ile
 	unsigned char instr[SC_MAX_APDU_BUFFER_SIZE];
 	unsigned char req[SC_MAX_APDU_BUFFER_SIZE];
 	unsigned char resp[SC_MAX_APDU_BUFFER_SIZE];
-	size_t ii = 0, reqlen, blklen = 64;
+	size_t ii = 0, reqlen, orglen, blklen = 64;
 	int rv;
 
 	LOG_FUNC_CALLED(card->ctx);
@@ -821,16 +821,19 @@ auth_compute_signature(struct sc_card *card, const unsigned char *in, size_t ile
 
 	if(auth_get_algo(_driver_data->algorithm_flags) == FINEID_ALGO_HIGH_NA &&
 	   ilen != 20 && ilen != 28 && ilen != 32 && ilen != 48 && ilen != 64) {
+		orglen = ilen;
 		sc_log(card->ctx, "Stripping pkcs prefix, cur flags: %X, cur length: %lu",
-			_driver_data->algorithm_flags, ilen);
+			_driver_data->algorithm_flags, orglen);
 
 		sc_pkcs1_strip_digest_info_prefix(&_driver_data->algorithm_flags, instr, ilen, instr, &ilen);
 		_driver_data->algorithm_flags = _driver_data->algorithm_flags | SC_ALGORITHM_RSA_PAD_PKCS1;
 		sc_log(card->ctx, "Stripped pkcs prefix, new flags: %X, new length: %lu",
 			_driver_data->algorithm_flags, ilen);
 
-		rv = auth_change_security_env(card);
-		LOG_TEST_RET(card->ctx, rv, "Security env change with new algorithm failed");
+		if(orglen > ilen) {
+			rv = auth_change_security_env(card);
+			LOG_TEST_RET(card->ctx, rv, "Security env change with new algorithm failed");
+		}
 	}
 
 	if(ilen>blklen) {
