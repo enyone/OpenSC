@@ -711,9 +711,6 @@ fineid_change_security_env(struct sc_card *card)
 			unsigned int algo = fineid_get_algo(_driver_data->algorithm_flags);
 			unsigned int padding = fineid_get_padding(_driver_data->algorithm_flags);
 
-			if(algo == FINEID_ALGO_HIGH_NA)
-				algo = FINEID_ALGO_HIGH_SHA256;
-
 			rsa_sbuf[2] = algo | padding;
 			rsa_sbuf[5] = _driver_data->key_ref_msb;
 
@@ -820,7 +817,7 @@ fineid_compute_signature(struct sc_card *card, const unsigned char *in, size_t i
 			_driver_data->algorithm_flags, orglen);
 
 		sc_pkcs1_strip_digest_info_prefix(&_driver_data->algorithm_flags, instr, ilen, instr, &ilen);
-		_driver_data->algorithm_flags = _driver_data->algorithm_flags | SC_ALGORITHM_RSA_PAD_PKCS1;
+		_driver_data->algorithm_flags = _driver_data->algorithm_flags | FINEID_ALGO_LOW_RSASSA_PKCS1;
 		sc_log(card->ctx, "Stripped pkcs prefix, new flags: %X, new length: %lu",
 			_driver_data->algorithm_flags, ilen);
 
@@ -849,7 +846,9 @@ fineid_compute_signature(struct sc_card *card, const unsigned char *in, size_t i
 
 	memcpy(&req[2], instr+ii, ilen-ii);
 
-	if(fineid_get_algo(_driver_data->algorithm_flags) == FINEID_ALGO_HIGH_NA)
+	if(_driver_data->algorithm_flags & SC_ALGORITHM_RSA_HASH_MD5_SHA1)
+	    req[0] = FINEID_HASHING_EXTERNALLY;
+	else if(fineid_get_algo(_driver_data->algorithm_flags) == FINEID_ALGO_HIGH_NA)
 		req[0] = FINEID_HASHING_BY_CARD;
 	else
 		req[0] = FINEID_HASHING_EXTERNALLY;
