@@ -8,6 +8,7 @@
  *
  * FINeID v3
  * Copyright (C) 2019  Juho Tykkälä <juho.tykkala@phnet.fi>
+ *                     Petteri Lehtonen <ple21108@gmail.com>
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
