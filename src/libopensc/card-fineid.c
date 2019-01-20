@@ -116,8 +116,8 @@ static struct sc_card_driver fineid_drv = {
 	NULL, 0, NULL
 };
 
-//static int fineid_get_pin_reference (struct sc_card *card,
-//	int type, int reference, int cmd, int *out_ref);
+/* static int fineid_get_pin_reference (struct sc_card *card,
+ * int type, int reference, int cmd, int *out_ref); */
 static int fineid_get_serialnr(struct sc_card *card,
 	struct sc_serial_number *serial);
 static int fineid_select_file(struct sc_card *card, const struct sc_path *in_path,
@@ -136,10 +136,15 @@ int
 fineid_select_card_manager(struct sc_card *card, const struct sc_aid *aid)
 {
 	LOG_FUNC_CALLED(card->ctx);
-	
+
 	struct sc_apdu apdu;
 	int rv;
 
+	/* Select card manager application
+	 *   INS A4 select
+	 *   P1  04 select by name
+	 *   P2  0C no response
+	 */
 	sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0xA4, 0x04, 0x0C);
 	apdu.lc = aid->len;
 	apdu.data = aid->value;
@@ -167,11 +172,16 @@ fineid_select_aid(struct sc_card *card)
 	int rv, ii;
 	struct sc_path tmp_path;
 
-	/* Select Card Manager (to deselect previously selected application) */
+	/* Select card_manager (to deselect previously selected application) */
 	rv = fineid_select_card_manager(card, &fineid_cm_aid);
 	LOG_TEST_RET(card->ctx, rv, "APDU transmit failed");
 
-	/* Get smart card serial number */
+	/* Get serial number and store to drv_data for later use
+	 *   CLA 80
+	 *   INS CA
+	 *   P1  9F
+	 *   P2  7F
+	 */
 	sc_format_apdu(card, &apdu, SC_APDU_CASE_2_SHORT, 0xCA, 0x9F, 0x7F);
 	apdu.cla = 0x80;
 	apdu.le = 0x2D;
@@ -180,6 +190,7 @@ fineid_select_aid(struct sc_card *card)
 
 	rv = sc_transmit_apdu(card, &apdu);
 	LOG_TEST_RET(card->ctx, rv, "APDU transmit failed");
+
 	card->serialnr.len = 4;
 	memcpy(card->serialnr.value, apdu.resp+15, 4);
 
@@ -188,9 +199,10 @@ fineid_select_aid(struct sc_card *card)
 
 	sc_log(card->ctx, "serial number %li/0x%lX", _driver_data->sn, _driver_data->sn);
 
+	/* Initialize path to correct place */
 	memset(&tmp_path, 0, sizeof(struct sc_path));
 	tmp_path.type = SC_PATH_TYPE_DF_NAME;
-	
+
 	memcpy(tmp_path.value, aid_FINEID, lenAid_FINEID);
 	tmp_path.len = lenAid_FINEID;
 
@@ -203,7 +215,8 @@ fineid_select_aid(struct sc_card *card)
 
 	sc_format_path("3F002F00", &card->cache.current_path);
 	sc_file_dup(&fineid_current_ef, fineid_current_df);
-	
+
+	/* Store aid to drv_data for later use */
 	memcpy(_driver_data->aid, aid_FINEID, lenAid_FINEID);
 	_driver_data->aid_len = lenAid_FINEID;
 	card->name = nameAid_FINEID;
@@ -241,7 +254,7 @@ fineid_init(struct sc_card *card)
 	card->caps |= SC_CARD_CAP_RNG;
 	card->caps |= SC_CARD_CAP_USE_FCI_AC;
 
-	if (fineid_select_aid(card))   {
+	if (fineid_select_aid(card)) {
 		sc_log(card->ctx, "Failed to initialize %s", card->name);
 		LOG_TEST_RET(card->ctx, SC_ERROR_INVALID_CARD, "Failed to initialize");
 	}
@@ -268,7 +281,7 @@ static void
 fineid_add_acl_entry(struct sc_card *card, struct sc_file *file, unsigned int op,
 		unsigned char acl_byte)
 {
-	if ((acl_byte & 0xE0) == 0x60)   {
+	if ((acl_byte & 0xE0) == 0x60) {
 		sc_log(card->ctx, "called; op 0x%X; SC_AC_PRO; ref 0x%X", op, acl_byte);
 		sc_file_add_acl_entry(file, op, SC_AC_PRO, acl_byte);
 		return;
@@ -306,8 +319,8 @@ fineid_tlv_get(struct sc_card *card, const unsigned char *msg, int len, unsigned
 	int cur = 0;
 	LOG_FUNC_CALLED(card->ctx);
 
-	while (cur < len)  {
-		if (*(msg+cur)==tag)  {
+	while (cur < len) {
+		if (*(msg+cur)==tag) {
 			int ii, ln = *(msg+cur+1);
 
 			sc_log(card->ctx, "tag 0x%X found", tag);
@@ -346,8 +359,8 @@ fineid_process_fci(struct sc_card *card, struct sc_file *file,
 
 	sc_log(card->ctx, "assuming id 0x%X", file->id);
 
-	// Skipping DF 5016 as not useful and will be
-	// encountered only during path traversal
+	/* Skipping DF 5016 as not useful and will be
+	 * encountered only during path traversal */
 	if(file->id == 0x5016) {
 		sc_log(card->ctx, "skipping 0x%X during path traversal", file->id);
 		LOG_FUNC_RETURN(card->ctx, SC_SUCCESS);
@@ -355,7 +368,7 @@ fineid_process_fci(struct sc_card *card, struct sc_file *file,
 
 	attr_len = sizeof(attr);
 	if (fineid_tlv_get(card, buf, buflen, ISO7816_TAG_FCP_TYPE, attr, &attr_len)) {
-		type = ISO7816_FILE_TYPE_TRANSPARENT_EF; // FINeID default type
+		type = ISO7816_FILE_TYPE_TRANSPARENT_EF; /* FINeID default type */
 	} else {
 		type = attr[0];
 	}
@@ -397,7 +410,7 @@ fineid_process_fci(struct sc_card *card, struct sc_file *file,
 			file->size = PUBKEY_1024_ASN1_SIZE;
 		else if (file->size==2048)
 			file->size = PUBKEY_2048_ASN1_SIZE;
-		else   {
+		else {
 			sc_log(card->ctx,
 				   "Not supported public key size: %"SC_FORMAT_LEN_SIZE_T"u",
 				   file->size);
@@ -419,8 +432,9 @@ fineid_process_fci(struct sc_card *card, struct sc_file *file,
 		LOG_FUNC_RETURN(card->ctx, SC_ERROR_UNKNOWN_DATA_RECEIVED);
 	}
 
-	// TODO: Implement the way ISO7816_TAG_FCP_ACLS is not needed as it is not present
-	// Hard-coded for now, see reason bellow
+	/* TODO:
+	 * Implement the way ISO7816_TAG_FCP_ACLS is not needed as it is not present
+	 * Hard-coded for now, see reason bellow */
 	if (file->type == SC_FILE_TYPE_DF) {
 		fineid_add_acl_entry(card, file, SC_AC_OP_SELECT, 0x00);
 		fineid_add_acl_entry(card, file, SC_AC_OP_LOCK, 0xFF);
@@ -437,8 +451,10 @@ fineid_process_fci(struct sc_card *card, struct sc_file *file,
 		fineid_add_acl_entry(card, file, SC_AC_OP_REHABILITATE, 0xFF);
 		fineid_add_acl_entry(card, file, SC_AC_OP_INVALIDATE, 0xFF);
 	}
-	
-	// TODO: Tag ISO7816_TAG_FCP_ACLS not present in FINeID
+
+	/* TODO:
+	 * Tag ISO7816_TAG_FCP_ACLS not present in FINeID */
+
 	/*
 	attr_len = sizeof(attr);
 	if (fineid_tlv_get(card, buf, buflen, ISO7816_TAG_FCP_ACLS, attr, &attr_len))
@@ -456,7 +472,7 @@ fineid_process_fci(struct sc_card *card, struct sc_file *file,
 		fineid_add_acl_entry(card, file, SC_AC_OP_PIN_RESET, attr[6]);
 		sc_log(card->ctx, "SC_FILE_TYPE_DF:CRYPTO %X", attr[1]);
 	}
-	else if (file->type == SC_FILE_TYPE_INTERNAL_EF)  {
+	else if (file->type == SC_FILE_TYPE_INTERNAL_EF) {
 		switch (file->ef_structure) {
 		case SC_CARDCTL_OBERTHUR_KEY_RSA_PUBLIC:
 			fineid_add_acl_entry(card, file, SC_AC_OP_UPDATE, attr[0]);
@@ -472,7 +488,7 @@ fineid_process_fci(struct sc_card *card, struct sc_file *file,
 			break;
 		}
 	}
-	else   {
+	else {
 		switch (file->ef_structure) {
 		case SC_FILE_EF_TRANSPARENT:
 			fineid_add_acl_entry(card, file, SC_AC_OP_WRITE, attr[0]);
@@ -522,7 +538,7 @@ fineid_select_file(struct sc_card *card, const struct sc_path *in_path,
 		sc_log(card->ctx, "current file; type=%d, path=%s",
 				fineid_current_ef->path.type, sc_print_path(&fineid_current_ef->path));
 
-	if (path.type == SC_PATH_TYPE_FILE_ID)   {
+	if (path.type == SC_PATH_TYPE_FILE_ID) {
 		sc_file_free(fineid_current_ef);
 		fineid_current_ef = NULL;
 
@@ -531,7 +547,7 @@ fineid_select_file(struct sc_card *card, const struct sc_path *in_path,
 		if (!tmp_file)
 			return SC_ERROR_OBJECT_NOT_FOUND;
 
-		if (path.type == SC_PATH_TYPE_PARENT)   {
+		if (path.type == SC_PATH_TYPE_PARENT) {
 			memcpy(&tmp_file->path, &fineid_current_df->path, sizeof(struct sc_path));
 			if (tmp_file->path.len > 2)
 				tmp_file->path.len -= 2;
@@ -539,14 +555,14 @@ fineid_select_file(struct sc_card *card, const struct sc_path *in_path,
 			sc_file_free(fineid_current_df);
 			sc_file_dup(&fineid_current_df, tmp_file);
 		}
-		else   {
-			if (tmp_file->type == SC_FILE_TYPE_DF)   {
+		else {
+			if (tmp_file->type == SC_FILE_TYPE_DF) {
 				sc_concatenate_path(&tmp_file->path, &fineid_current_df->path, &path);
 
 				sc_file_free(fineid_current_df);
 				sc_file_dup(&fineid_current_df, tmp_file);
 			}
-			else   {
+			else {
 				sc_file_free(fineid_current_ef);
 
 				sc_file_dup(&fineid_current_ef, tmp_file);
@@ -558,27 +574,27 @@ fineid_select_file(struct sc_card *card, const struct sc_path *in_path,
 
 		sc_file_free(tmp_file);
 	}
-	else if (path.type == SC_PATH_TYPE_DF_NAME)   {
+	else if (path.type == SC_PATH_TYPE_DF_NAME) {
 		rv = iso_ops->select_file(card, &path, NULL);
-		if (rv)   {
+		if (rv) {
 			sc_file_free(fineid_current_ef);
 			fineid_current_ef = NULL;
 		}
 		LOG_TEST_RET(card->ctx, rv, "select file failed");
 	}
-	else   {
+	else {
 		for (offs = 0; offs < path.len && offs < fineid_current_df->path.len; offs += 2)
 			if (path.value[offs] != fineid_current_df->path.value[offs] ||
 					path.value[offs + 1] != fineid_current_df->path.value[offs + 1])
 				break;
 
 		sc_log(card->ctx, "offs %"SC_FORMAT_LEN_SIZE_T"u", offs);
-		if (offs && offs < fineid_current_df->path.len)   {
+		if (offs && offs < fineid_current_df->path.len) {
 			size_t deep = fineid_current_df->path.len - offs;
 
 			sc_log(card->ctx, "deep %"SC_FORMAT_LEN_SIZE_T"u",
 			       deep);
-			for (ii=0; ii<deep; ii+=2)   {
+			for (ii=0; ii<deep; ii+=2) {
 				struct sc_path tmp_path;
 
 				memcpy(&tmp_path, &fineid_current_df->path,  sizeof(struct sc_path));
@@ -589,14 +605,14 @@ fineid_select_file(struct sc_card *card, const struct sc_path *in_path,
 			}
 		}
 
-		if (path.len - offs > 0)   {
+		if (path.len - offs > 0) {
 			struct sc_path tmp_path;
 
 			memset(&tmp_path, 0, sizeof(struct sc_path));
 			tmp_path.type = SC_PATH_TYPE_FILE_ID;
 			tmp_path.len = 2;
 
-			for (ii=0; ii < path.len - offs; ii+=2)   {
+			for (ii=0; ii < path.len - offs; ii+=2) {
 				memcpy(tmp_path.value, path.value + offs + ii, 2);
 
 				sc_log(card->ctx, "iteration %lu begin", ii/2);
@@ -605,7 +621,7 @@ fineid_select_file(struct sc_card *card, const struct sc_path *in_path,
 				sc_log(card->ctx, "iteration %lu end", ii/2);
 			}
 		}
-		else if (path.len - offs == 0 && file_out)  {
+		else if (path.len - offs == 0 && file_out) {
 			if (sc_compare_path(&path, &fineid_current_df->path))
 				sc_file_dup(file_out, fineid_current_df);
 			else  if (fineid_current_ef)
@@ -627,6 +643,13 @@ fineid_list_files(struct sc_card *card, unsigned char *buf, size_t buflen)
 	int rv;
 
 	LOG_FUNC_CALLED(card->ctx);
+
+	/* List file(s) selected by current path
+	 *   CLA 80
+	 *   INS 34
+	 *   P1  00
+	 *   P2  00
+	 */
 	sc_format_apdu(card, &apdu, SC_APDU_CASE_2_SHORT, 0x34, 0, 0);
 	apdu.cla = 0x80;
 	apdu.le = 0x40;
@@ -695,6 +718,11 @@ fineid_change_security_env(struct sc_card *card)
 
 	struct sc_apdu apdu;
 	int rv;
+
+	/* Default structure for data field (dst or ct)
+	 *   80 algorithm reference
+	 *   84 key reference
+	 */
 	unsigned char rsa_sbuf[6] = {
 		0x80, 0x01, 0xFF,
 		0x84, 0x01, 0xFF
@@ -715,6 +743,11 @@ fineid_change_security_env(struct sc_card *card)
 			rsa_sbuf[2] = algo | padding;
 			rsa_sbuf[5] = _driver_data->key_ref_msb;
 
+			/* Set security environment
+			 *   INS 22 set security env
+			 *   P1  41 computation and decipherment
+			 *   P2  B6 dst in data field
+			 */
 			sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x22, 0x41, 0xB6);
 			apdu.lc = sizeof(rsa_sbuf);
 			apdu.datalen = sizeof(rsa_sbuf);
@@ -724,6 +757,11 @@ fineid_change_security_env(struct sc_card *card)
 			rsa_sbuf[2] = fineid_get_ct();
 			rsa_sbuf[5] = _driver_data->key_ref_msb;
 
+			/* Set security environment
+			 *   INS 22 set security env
+			 *   P1  41 computation and decipherment
+			 *   P2  B8 ct in data field
+			 */
 			sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x22, 0x41, 0xB8);
 			apdu.lc = sizeof(rsa_sbuf);
 			apdu.datalen = sizeof(rsa_sbuf);
@@ -733,6 +771,11 @@ fineid_change_security_env(struct sc_card *card)
 			rsa_sbuf[2] = fineid_get_ct();
 			rsa_sbuf[5] = _driver_data->key_ref_msb;
 
+			/* Set security environment
+			 *   INS 22 set security env
+			 *   P1  41 computation and decipherment
+			 *   P2  B8 ct in data field
+			 */
 			sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x22, 0x41, 0xB8);
 			apdu.lc = sizeof(rsa_sbuf);
 			apdu.datalen = sizeof(rsa_sbuf);
@@ -766,6 +809,7 @@ fineid_set_security_env(struct sc_card *card,
 
 	LOG_FUNC_CALLED(card->ctx);
 
+	/* Store to drv_data for later use in fineid_change_security_env() */
 	_driver_data->operation = env->operation;
 	_driver_data->key_ref_msb = env->key_ref[0];
 	_driver_data->algorithm = env->algorithm;
@@ -780,6 +824,7 @@ fineid_set_security_env(struct sc_card *card,
 static int
 fineid_restore_security_env(struct sc_card *card, int se_num)
 {
+	/* No need to restore after any implemented operation */
 	return SC_SUCCESS;
 }
 
@@ -798,11 +843,11 @@ fineid_compute_signature(struct sc_card *card, const unsigned char *in, size_t i
 
 	LOG_FUNC_CALLED(card->ctx);
 
-	if (!card || !in || !out)   {
+	if (!card || !in || !out) {
 		return SC_ERROR_INVALID_ARGUMENTS;
 	}
 
-	else if (ilen > 96)   {
+	else if (ilen > 96) {
 		sc_log(card->ctx, "Illegal input length %"SC_FORMAT_LEN_SIZE_T"u", ilen);
 		LOG_TEST_RET(card->ctx, SC_ERROR_INVALID_ARGUMENTS, "Illegal input length");
 	}
@@ -811,6 +856,7 @@ fineid_compute_signature(struct sc_card *card, const unsigned char *in, size_t i
 
 	memcpy(&instr, in, ilen);
 
+	/* If no algorithm flags given, try to figure flags out from pkcs1 prefix */
 	if(fineid_get_algo(_driver_data->algorithm_flags) == FINEID_ALGO_HIGH_NA &&
 	   ilen != 20 && ilen != 28 && ilen != 32 && ilen != 48 && ilen != 64) {
 		orglen = ilen;
@@ -822,14 +868,21 @@ fineid_compute_signature(struct sc_card *card, const unsigned char *in, size_t i
 		sc_log(card->ctx, "Stripped pkcs prefix, new flags: %X, new length: %lu",
 			_driver_data->algorithm_flags, ilen);
 
+		/* If prefix was present, re-provision security env */
 		if(orglen > ilen) {
 			rv = fineid_change_security_env(card);
 			LOG_TEST_RET(card->ctx, rv, "Security env change with new algorithm failed");
 		}
 	}
 
+	/* If data does not fit in block in length */
 	if(ilen>blklen) {
-		for (ii=0; ii<ilen-blklen; ii+=blklen)   {
+		for (ii=0; ii<ilen-blklen; ii+=blklen) {
+			/* Security operation hash
+			 *   INS 2A sec op
+			 *   P1  90 hash
+			 *   P2  80 one block of data
+			 */
 			sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x2A, 0x90, 0x80);
 			apdu.datalen = blklen;
 			apdu.data = instr+ii;
@@ -847,6 +900,7 @@ fineid_compute_signature(struct sc_card *card, const unsigned char *in, size_t i
 
 	memcpy(&req[2], instr+ii, ilen-ii);
 
+	/* Decide who will/has calculate(d) the hash */
 	if(_driver_data->algorithm_flags & SC_ALGORITHM_RSA_HASH_MD5_SHA1)
 	    req[0] = FINEID_HASHING_EXTERNALLY;
 	else if(fineid_get_algo(_driver_data->algorithm_flags) == FINEID_ALGO_HIGH_NA)
@@ -857,6 +911,12 @@ fineid_compute_signature(struct sc_card *card, const unsigned char *in, size_t i
 	req[1] = ilen-ii;
 
 	sc_log(card->ctx, "Finalizing at offset %lu", ii);
+
+	/* Security operation hash
+	 *   INS 2A sec op
+	 *   P1  90 hash
+	 *   P2  A0 last data block
+	 */
 	sc_format_apdu(card, &apdu, SC_APDU_CASE_3_SHORT, 0x2A, 0x90, 0xA0);
 	apdu.datalen = reqlen;
 	apdu.data = req;
@@ -867,6 +927,11 @@ fineid_compute_signature(struct sc_card *card, const unsigned char *in, size_t i
 	rv = sc_check_sw(card, apdu.sw1, apdu.sw2);
 	LOG_TEST_RET(card->ctx, rv, "Last block send failed");
 
+	/* Security operation sign
+	 *   INS 2A sec op
+	 *   P1  9E sign, signature is returned in response
+	 *   P2  9A
+	 */
 	sc_format_apdu(card, &apdu, SC_APDU_CASE_2_SHORT, 0x2A, 0x9E, 0x9A);
 	apdu.le = olen > 256 ? 256 : olen;
 	apdu.resp = resp;
@@ -877,7 +942,7 @@ fineid_compute_signature(struct sc_card *card, const unsigned char *in, size_t i
 	rv = sc_check_sw(card, apdu.sw1, apdu.sw2);
 	LOG_TEST_RET(card->ctx, rv, "Signature receiving failed");
 
-	if (apdu.resplen > olen)   {
+	if (apdu.resplen > olen) {
 		sc_log(card->ctx,
 		       "Compute signature failed: invalid response length %"SC_FORMAT_LEN_SIZE_T"u",
 		       apdu.resplen);
@@ -905,16 +970,21 @@ fineid_decipher(struct sc_card *card, const unsigned char *in, size_t inlen,
 	if (!out || !outlen || inlen > SC_MAX_APDU_BUFFER_SIZE)
 		LOG_FUNC_RETURN(card->ctx, SC_ERROR_INVALID_ARGUMENTS);
 
+	/* Security operation decipher
+	 *   INS 2A sec op
+	 *   P1  80 decipher, decrypted value is returned in response
+	 *   P2  86
+	 */
 	sc_format_apdu(card, &apdu, SC_APDU_CASE_4_SHORT, 0x2A, 0x80, 0x86);
 
 	sc_log(card->ctx, "algorithm SC_ALGORITHM_RSA");
-	if (inlen % 64)   {
+	if (inlen % 64) {
 		rv = SC_ERROR_INVALID_ARGUMENTS;
 		goto done;
 	}
 
 	_inlen = inlen;
-	if (_inlen == 256)   {
+	if (_inlen == 256) {
 		apdu.cla |= 0x10;
 		apdu.data = in;
 		apdu.datalen = 8;
@@ -983,7 +1053,9 @@ fineid_card_ctl(struct sc_card *card, unsigned long cmd, void *ptr)
 }
 
 
-// TODO: Not used atm, see reason at fineid_logout()
+/* TODO:
+ * Not used atm, see reason at fineid_logout() */
+
 /*
 static int
 fineid_get_pin_reference (struct sc_card *card, int type, int reference, int cmd, int *out_ref)
@@ -1012,13 +1084,15 @@ fineid_get_pin_reference (struct sc_card *card, int type, int reference, int cmd
 static int
 fineid_logout(struct sc_card *card)
 {
-	// TODO: INS 0x2E not present in FINeID
+	/* TODO:
+	 * INS 0x2E not present in FINeID */
+
 	/*
 	struct sc_apdu apdu;
 	int ii, rv = 0, pin_ref;
 	int reset_flag = 0x20;
 
-	for (ii=0; ii < 4; ii++)   {
+	for (ii=0; ii < 4; ii++) {
 		rv = fineid_get_pin_reference (card, SC_AC_CHV, ii+1, SC_PIN_CMD_UNBLOCK, &pin_ref);
 		LOG_TEST_RET(card->ctx, rv, "Cannot get PIN reference");
 
