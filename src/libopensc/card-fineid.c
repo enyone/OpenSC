@@ -994,7 +994,6 @@ fineid_decipher(struct sc_card *card, const unsigned char *in, size_t inlen,
 		apdu.le = 256;
 
 		rv = sc_transmit_apdu(card, &apdu);
-		sc_log(card->ctx, "rv %i", rv);
 		LOG_TEST_RET(card->ctx, rv, "APDU transmit failed");
 		rv = sc_check_sw(card, apdu.sw1, apdu.sw2);
 		LOG_TEST_RET(card->ctx, rv, "Card returned error");
@@ -1013,10 +1012,8 @@ fineid_decipher(struct sc_card *card, const unsigned char *in, size_t inlen,
 	apdu.le = _inlen;
 
 	rv = sc_transmit_apdu(card, &apdu);
-	sc_log(card->ctx, "rv %i", rv);
 	LOG_TEST_RET(card->ctx, rv, "APDU transmit failed");
 	rv = sc_check_sw(card, apdu.sw1, apdu.sw2);
-	sc_log(card->ctx, "rv %i", rv);
 	LOG_TEST_RET(card->ctx, rv, "Card returned error");
 
 	if (outlen > apdu.resplen)
@@ -1053,57 +1050,21 @@ fineid_card_ctl(struct sc_card *card, unsigned long cmd, void *ptr)
 }
 
 
-/* TODO:
- * Not used atm, see reason at fineid_logout() */
-
-/*
-static int
-fineid_get_pin_reference (struct sc_card *card, int type, int reference, int cmd, int *out_ref)
-{
-	if (!out_ref)
-		LOG_FUNC_RETURN(card->ctx, SC_ERROR_INVALID_ARGUMENTS);
-
-	switch (type) {
-	case SC_AC_CHV:
-	case SC_AC_CONTEXT_SPECIFIC:
-		*out_ref = reference;
-		if (reference == 1 || reference == 4)
-			if (cmd == SC_PIN_CMD_VERIFY)
-				*out_ref |= 0x80;
-		break;
-
-	default:
-		LOG_FUNC_RETURN(card->ctx, SC_ERROR_INVALID_ARGUMENTS);
-	}
-
-	LOG_FUNC_RETURN(card->ctx, SC_SUCCESS);
-}
-*/
-
-
 static int
 fineid_logout(struct sc_card *card)
 {
-	/* TODO:
-	 * INS 0x2E not present in FINeID */
+	int rv;
 
-	/*
-	struct sc_apdu apdu;
-	int ii, rv = 0, pin_ref;
-	int reset_flag = 0x20;
+	LOG_FUNC_CALLED(card->ctx);
 
-	for (ii=0; ii < 4; ii++) {
-		rv = fineid_get_pin_reference (card, SC_AC_CHV, ii+1, SC_PIN_CMD_UNBLOCK, &pin_ref);
-		LOG_TEST_RET(card->ctx, rv, "Cannot get PIN reference");
+	rv = iso7816_logout(card, FINEID_PIN_AUTH);
+	LOG_TEST_RET(card->ctx, rv, "AUTH PIN logout failed");
 
-		sc_format_apdu(card, &apdu, SC_APDU_CASE_1, 0x2E, 0x00, 0x00);
-		apdu.cla = 0x80;
-		apdu.p2 = pin_ref | reset_flag;
-		rv = sc_transmit_apdu(card, &apdu);
-		LOG_TEST_RET(card->ctx, rv, "APDU transmit failed");
+	rv = iso7816_logout(card, FINEID_PIN_SIGN);
+	LOG_TEST_RET(card->ctx, rv, "SIGN PIN logout failed");
 
-	}
-	*/
+	rv = iso7816_logout(card, FINEID_PIN_PUK);
+	LOG_TEST_RET(card->ctx, rv, "PUK PIN logout failed");
 
 	LOG_FUNC_RETURN(card->ctx, SC_SUCCESS);
 }
