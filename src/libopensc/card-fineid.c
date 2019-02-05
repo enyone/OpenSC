@@ -707,7 +707,7 @@ fineid_get_padding(unsigned int algorithm_flags)
 static unsigned int
 fineid_get_ct()
 {
-	return FINEID_CT_RSAES_OAEP_SHA256;
+	return FINEID_CT_RSASSA_PKCS1;
 }
 
 
@@ -955,78 +955,6 @@ fineid_compute_signature(struct sc_card *card, const unsigned char *in, size_t i
 }
 
 
-static int
-fineid_decipher(struct sc_card *card, const unsigned char *in, size_t inlen,
-				unsigned char *out, size_t outlen)
-{
-	struct sc_apdu apdu;
-	unsigned char resp[SC_MAX_APDU_BUFFER_SIZE];
-	int rv, _inlen = inlen;
-
-	LOG_FUNC_CALLED(card->ctx);
-	sc_log(card->ctx,
-	       "crgram_len %"SC_FORMAT_LEN_SIZE_T"u;  outlen %"SC_FORMAT_LEN_SIZE_T"u",
-	       inlen, outlen);
-	if (!out || !outlen || inlen > SC_MAX_APDU_BUFFER_SIZE)
-		LOG_FUNC_RETURN(card->ctx, SC_ERROR_INVALID_ARGUMENTS);
-
-	/* Security operation decipher
-	 *   INS 2A sec op
-	 *   P1  80 decipher, decrypted value is returned in response
-	 *   P2  86
-	 */
-	sc_format_apdu(card, &apdu, SC_APDU_CASE_4_SHORT, 0x2A, 0x80, 0x86);
-
-	sc_log(card->ctx, "algorithm SC_ALGORITHM_RSA");
-	if (inlen % 64) {
-		rv = SC_ERROR_INVALID_ARGUMENTS;
-		goto done;
-	}
-
-	_inlen = inlen;
-	if (_inlen == 256) {
-		apdu.cla |= 0x10;
-		apdu.data = in;
-		apdu.datalen = 8;
-		apdu.resp = resp;
-		apdu.resplen = SC_MAX_APDU_BUFFER_SIZE;
-		apdu.lc = 8;
-		apdu.le = 256;
-
-		rv = sc_transmit_apdu(card, &apdu);
-		LOG_TEST_RET(card->ctx, rv, "APDU transmit failed");
-		rv = sc_check_sw(card, apdu.sw1, apdu.sw2);
-		LOG_TEST_RET(card->ctx, rv, "Card returned error");
-
-		_inlen -= 8;
-		in += 8;
-
-		apdu.cla &= ~0x10;
-	}
-
-	apdu.data = in;
-	apdu.datalen = _inlen;
-	apdu.resp = resp;
-	apdu.resplen = SC_MAX_APDU_BUFFER_SIZE;
-	apdu.lc = _inlen;
-	apdu.le = _inlen;
-
-	rv = sc_transmit_apdu(card, &apdu);
-	LOG_TEST_RET(card->ctx, rv, "APDU transmit failed");
-	rv = sc_check_sw(card, apdu.sw1, apdu.sw2);
-	LOG_TEST_RET(card->ctx, rv, "Card returned error");
-
-	if (outlen > apdu.resplen)
-		outlen = apdu.resplen;
-
-	memcpy(out, apdu.resp, outlen);
-	rv = outlen;
-
-done:
-	LOG_FUNC_RETURN(card->ctx, rv);
-}
-
-
 /* Return the default AAK for this type of card */
 static int
 fineid_get_default_key(struct sc_card *card, struct sc_cardctl_default_key *data)
@@ -1108,7 +1036,6 @@ sc_get_driver(void)
 	fineid_ops.set_security_env = fineid_set_security_env;
 	fineid_ops.restore_security_env = fineid_restore_security_env;
 	fineid_ops.compute_signature = fineid_compute_signature;
-	fineid_ops.decipher = fineid_decipher;
 	fineid_ops.process_fci = fineid_process_fci;
 	fineid_ops.logout = fineid_logout;
 	fineid_ops.check_sw = fineid_check_sw;
