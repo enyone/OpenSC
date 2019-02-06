@@ -432,9 +432,8 @@ fineid_process_fci(struct sc_card *card, struct sc_file *file,
 		LOG_FUNC_RETURN(card->ctx, SC_ERROR_UNKNOWN_DATA_RECEIVED);
 	}
 
-	/* TODO:
-	 * Implement the way ISO7816_TAG_FCP_ACLS is not needed as it is not present
-	 * Hard-coded for now, see reason bellow */
+	/* TODO: ACL values hard-coded to read/select-only for now
+	 * as ISO7816_TAG_FCP_ACLS is not present in FINeID v3 */
 	if (file->type == SC_FILE_TYPE_DF) {
 		fineid_add_acl_entry(card, file, SC_AC_OP_SELECT, 0x00);
 		fineid_add_acl_entry(card, file, SC_AC_OP_LOCK, 0xFF);
@@ -451,60 +450,6 @@ fineid_process_fci(struct sc_card *card, struct sc_file *file,
 		fineid_add_acl_entry(card, file, SC_AC_OP_REHABILITATE, 0xFF);
 		fineid_add_acl_entry(card, file, SC_AC_OP_INVALIDATE, 0xFF);
 	}
-
-	/* TODO:
-	 * Tag ISO7816_TAG_FCP_ACLS not present in FINeID */
-
-	/*
-	attr_len = sizeof(attr);
-	if (fineid_tlv_get(card, buf, buflen, ISO7816_TAG_FCP_ACLS, attr, &attr_len))
-		LOG_FUNC_RETURN(card->ctx, SC_ERROR_UNKNOWN_DATA_RECEIVED);
-	if (attr_len<8)
-		LOG_FUNC_RETURN(card->ctx, SC_ERROR_UNKNOWN_DATA_RECEIVED);
-
-	if (file->type == SC_FILE_TYPE_DF) {
-		fineid_add_acl_entry(card, file, SC_AC_OP_CREATE, attr[0]);
-		fineid_add_acl_entry(card, file, SC_AC_OP_CRYPTO, attr[1]);
-		fineid_add_acl_entry(card, file, SC_AC_OP_LIST_FILES, attr[2]);
-		fineid_add_acl_entry(card, file, SC_AC_OP_DELETE, attr[3]);
-		fineid_add_acl_entry(card, file, SC_AC_OP_PIN_DEFINE, attr[4]);
-		fineid_add_acl_entry(card, file, SC_AC_OP_PIN_CHANGE, attr[5]);
-		fineid_add_acl_entry(card, file, SC_AC_OP_PIN_RESET, attr[6]);
-		sc_log(card->ctx, "SC_FILE_TYPE_DF:CRYPTO %X", attr[1]);
-	}
-	else if (file->type == SC_FILE_TYPE_INTERNAL_EF) {
-		switch (file->ef_structure) {
-		case SC_CARDCTL_OBERTHUR_KEY_RSA_PUBLIC:
-			fineid_add_acl_entry(card, file, SC_AC_OP_UPDATE, attr[0]);
-			fineid_add_acl_entry(card, file, SC_AC_OP_PSO_ENCRYPT, attr[2]);
-			fineid_add_acl_entry(card, file, SC_AC_OP_PSO_VERIFY_SIGNATURE, attr[4]);
-			fineid_add_acl_entry(card, file, SC_AC_OP_EXTERNAL_AUTHENTICATE, attr[6]);
-			break;
-		case SC_CARDCTL_OBERTHUR_KEY_RSA_CRT:
-			fineid_add_acl_entry(card, file, SC_AC_OP_UPDATE, attr[0]);
-			fineid_add_acl_entry(card, file, SC_AC_OP_PSO_DECRYPT, attr[1]);
-			fineid_add_acl_entry(card, file, SC_AC_OP_PSO_COMPUTE_SIGNATURE, attr[3]);
-			fineid_add_acl_entry(card, file, SC_AC_OP_INTERNAL_AUTHENTICATE, attr[5]);
-			break;
-		}
-	}
-	else {
-		switch (file->ef_structure) {
-		case SC_FILE_EF_TRANSPARENT:
-			fineid_add_acl_entry(card, file, SC_AC_OP_WRITE, attr[0]);
-			fineid_add_acl_entry(card, file, SC_AC_OP_UPDATE, attr[1]);
-			fineid_add_acl_entry(card, file, SC_AC_OP_READ, attr[2]);
-			fineid_add_acl_entry(card, file, SC_AC_OP_ERASE, attr[3]);
-			break;
-		case SC_FILE_EF_LINEAR_VARIABLE:
-			fineid_add_acl_entry(card, file, SC_AC_OP_WRITE, attr[0]);
-			fineid_add_acl_entry(card, file, SC_AC_OP_UPDATE, attr[1]);
-			fineid_add_acl_entry(card, file, SC_AC_OP_READ, attr[2]);
-			fineid_add_acl_entry(card, file, SC_AC_OP_ERASE, attr[3]);
-			break;
-		}
-	}
-	*/
 
 	file->status = SC_FILE_STATUS_ACTIVATED;
 	file->magic = SC_FILE_MAGIC;
